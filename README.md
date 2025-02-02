@@ -40,49 +40,7 @@ touch ~/.global-git-hooks/pre-commit
 nano ~/.global-git-hooks/pre-commit
 ```
 
-Paste the following **shell script**:
-
-```sh
-#!/bin/sh
-echo "=== Running Global Pre-Commit Hook ==="
-
-# Get the Git repository root directory
-REPO_PATH=$(git rev-parse --show-toplevel)
-echo "Detected repository path: $REPO_PATH"
-
-# Navigate to the repository folder
-cd "$REPO_PATH" || exit
-
-# Generate requirements.txt inside the repository
-pip freeze > "$REPO_PATH/requirements.txt"
-
-# Verify if the file was created
-if [ -f "$REPO_PATH/requirements.txt" ]; then
-    echo "requirements.txt was created successfully."
-else
-    echo "ERROR: requirements.txt was NOT created!"
-    exit 1
-fi
-
-# Optionally remove lines containing specific dependencies (customize as needed)
-REMOVE_DEP="ibapi"
-if [ -n "$REMOVE_DEP" ]; then
-    grep -iv "$REMOVE_DEP" "$REPO_PATH/requirements.txt" > "$REPO_PATH/temp.txt" && mv "$REPO_PATH/temp.txt" "$REPO_PATH/requirements.txt"
-fi
-
-# Ensure the file is staged for commit
-git add "$REPO_PATH/requirements.txt" || echo "WARNING: Failed to stage requirements.txt"
-
-# Check if the file is staged
-if git diff --cached --name-only | grep -q "requirements.txt"; then
-    echo "requirements.txt is staged successfully."
-else
-    echo "WARNING: requirements.txt is still untracked."
-fi
-
-echo "=== Pre-Commit Hook Completed Successfully ==="
-exit 0
-```
+save the code to the new file
 
 ### **4. Make the Hook Executable**
 
