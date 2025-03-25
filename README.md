@@ -8,9 +8,10 @@ This setup automatically generates and updates a `requirements.txt` file every t
 
 ## **Features**
 
+- Prompts before generating a new `requirements.txt`.
 - Automatically runs before each commit.
 - Generates `requirements.txt` in the repository root.
-- Optionally removes specific unwanted dependencies.
+- Optionally removes specific unwanted dependencies (e.g., `ibapi`).
 - Ensures `requirements.txt` is correctly staged for commit.
 
 ---
@@ -19,40 +20,74 @@ This setup automatically generates and updates a `requirements.txt` file every t
 
 ### **1. Create a Global Hooks Directory**
 
-Run the following command in **Git Bash**:
+#### Git Bash / Linux / macOS:
 
 ```sh
 mkdir -p ~/.global-git-hooks
 ```
 
+#### Windows PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Path "$HOME\.global-git-hooks" -Force
+```
+
+---
+
 ### **2. Configure Git to Use the Global Hooks Directory**
+
+#### Git Bash / Linux / macOS:
 
 ```sh
 git config --global core.hooksPath ~/.global-git-hooks
 ```
 
+#### Windows PowerShell:
+
+```powershell
+git config --global core.hooksPath "$HOME\.global-git-hooks"
+```
+
+---
+
 ### **3. Create the Pre-Commit Hook**
 
-Open the hook file in an editor:
+#### Git Bash / Linux / macOS:
 
 ```sh
 touch ~/.global-git-hooks/pre-commit
 nano ~/.global-git-hooks/pre-commit
 ```
 
-save the code to the new file
+#### Windows PowerShell:
+
+Use any text editor (e.g., Notepad, VS Code):
+
+```powershell
+notepad "$HOME\.global-git-hooks\pre-commit"
+```
+
+Paste the script inside the file and save.
+
+---
 
 ### **4. Make the Hook Executable**
 
-Run this in **Git Bash**:
+#### Git Bash / Linux / macOS:
 
 ```sh
 chmod +x ~/.global-git-hooks/pre-commit
 ```
 
+#### Windows:
+
+Make sure the file has **Unix line endings (LF)** and Git is configured to use `sh` (comes with Git for Windows). No `chmod` needed if using Git Bash.
+
+---
+
 ### **5. Test the Hook**
 
-Navigate to any Git repository and commit changes:
+Navigate to any Git repository and make a commit:
 
 ```sh
 git add .
@@ -62,6 +97,8 @@ git commit -m "Testing automatic requirements generation"
 If successful, the output will include:
 
 ```
+Do you want to regenerate requirements.txt from current environment? (y/n)
+...
 requirements.txt was created successfully.
 requirements.txt is staged successfully.
 ```
@@ -70,7 +107,7 @@ requirements.txt is staged successfully.
 
 ## **Final Notes**
 
-This setup ensures that `requirements.txt` is **always generated and tracked**, reducing the risk of missing dependencies in your projects. Since it is configured **globally**, it works across all Git repositories on your system without additional setup per project.
-
-If you encounter any issues, verify the **hook execution, Git configuration, and script permissions**. With this in place, you can ensure a consistent development environment with up-to-date dependencies for every commit and GitHub workflow execution.
-
+- The hook asks for confirmation before regenerating `requirements.txt`, giving you full control over when updates occur.
+- It works globally across all Git repositories.
+- For PowerShell users, ensure Git is installed with Bash support (default with Git for Windows).
+- Customize the script to exclude additional dependencies if needed (via the `REMOVE_DEP` variable).
