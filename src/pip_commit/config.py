@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -20,7 +21,7 @@ class Config:
     prompt: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict) -> Config:
+    def from_dict(cls, data: dict[str, Any]) -> Config:
         return cls(
             output=str(data.get("output", "requirements.txt")),
             exclude=tuple(str(x) for x in data.get("exclude", [])),
@@ -29,20 +30,21 @@ class Config:
         )
 
 
-def _read_toml(path: Path) -> dict:
+def _read_toml(path: Path) -> dict[str, Any]:
     try:
         with path.open("rb") as fh:
-            return tomllib.load(fh)
+            loaded: dict[str, Any] = tomllib.load(fh)
+            return loaded
     except (OSError, tomllib.TOMLDecodeError):
         return {}
 
 
-def load_config(repo_root: Path, overrides: dict | None = None) -> Config:
+def load_config(repo_root: Path, overrides: dict[str, Any] | None = None) -> Config:
     """Load config from `.pip-commit.toml` or `[tool.pip-commit]` in pyproject.toml.
 
     Standalone `.pip-commit.toml` takes precedence. CLI `overrides` win over both.
     """
-    data: dict = {}
+    data: dict[str, Any] = {}
 
     pyproject = repo_root / "pyproject.toml"
     if pyproject.is_file():

@@ -8,17 +8,18 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 from pip_commit._version import __version__
 from pip_commit.config import load_config
 from pip_commit.freeze import (
     filter_freeze,
+    freeze_installed,
     git_add,
     git_repo_root,
     git_staged_files,
     in_virtualenv,
     looks_like_python_project,
-    run_pip_freeze,
     write_if_changed,
 )
 
@@ -120,7 +121,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         # Don't surprise non-Python repos. Silent by design.
         return EXIT_OK
 
-    overrides: dict = {}
+    overrides: dict[str, Any] = {}
     if args.output is not None:
         overrides["output"] = args.output
     if args.exclude is not None:
@@ -147,18 +148,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_USER_DECLINED
 
     try:
-        frozen = run_pip_freeze()
-    except subprocess.CalledProcessError as exc:
-        print(
-            f"pip-commit: `pip freeze` failed (exit {exc.returncode}).\n{exc.stderr}",
-            file=sys.stderr,
-        )
-        return EXIT_ERROR
-    except subprocess.TimeoutExpired:
-        print("pip-commit: `pip freeze` timed out.", file=sys.stderr)
-        return EXIT_ERROR
-    except FileNotFoundError:
-        print("pip-commit: could not invoke Python/pip.", file=sys.stderr)
+        frozen = freeze_installed()
+    except OSError as exc:
+        print(f"pip-commit: failed to read installed packages: {exc}", file=sys.stderr)
         return EXIT_ERROR
 
     content = filter_freeze(frozen, cfg.exclude)

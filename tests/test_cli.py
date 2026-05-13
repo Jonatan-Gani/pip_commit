@@ -55,7 +55,7 @@ def test_happy_path_writes_and_stages(monkeypatch, python_repo: Path):
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("requests==2.31.0\nibapi==9.81\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("requests==2.31.0\nibapi==9.81\n"))
 
     rc = cli.main(["--yes", "--exclude", "ibapi"])
     assert rc == 0
@@ -77,7 +77,7 @@ def test_idempotent_no_stage_when_unchanged(monkeypatch, python_repo: Path, caps
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("a==1\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("a==1\n"))
 
     assert cli.main(["--yes"]) == 0
     assert cli.main(["--yes"]) == 0
@@ -85,15 +85,15 @@ def test_idempotent_no_stage_when_unchanged(monkeypatch, python_repo: Path, caps
     assert "already up to date" in captured
 
 
-def test_pip_freeze_failure_propagates(monkeypatch, python_repo: Path):
+def test_freeze_failure_propagates(monkeypatch, python_repo: Path):
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
 
     def boom(*_a, **_kw):
-        raise subprocess.CalledProcessError(2, ["pip", "freeze"], stderr="nope")
+        raise OSError("metadata unreadable")
 
-    monkeypatch.setattr(cli, "run_pip_freeze", boom)
+    monkeypatch.setattr(cli, "freeze_installed", boom)
     assert cli.main(["--yes"]) == 1
 
 
@@ -101,7 +101,7 @@ def test_no_stage_flag(monkeypatch, python_repo: Path):
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("a==1\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("a==1\n"))
 
     assert cli.main(["--yes", "--no-stage"]) == 0
     staged = subprocess.run(
@@ -121,7 +121,7 @@ def test_config_from_pyproject_used(monkeypatch, python_repo: Path):
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("ibapi==1\nreq==2\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("ibapi==1\nreq==2\n"))
 
     assert cli.main([]) == 0
     out = (python_repo / "reqs.txt").read_text()
@@ -133,7 +133,7 @@ def test_refuses_output_outside_repo(monkeypatch, python_repo: Path, tmp_path_fa
     monkeypatch.delenv("PIP_COMMIT_SKIP", raising=False)
     monkeypatch.chdir(python_repo)
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("a==1\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("a==1\n"))
 
     elsewhere = tmp_path_factory.mktemp("outside")
     escape = elsewhere / "escape.txt"
@@ -155,7 +155,7 @@ def test_prompt_decline(monkeypatch, python_repo: Path):
         called["freeze"] = True
         return ""
 
-    monkeypatch.setattr(cli, "run_pip_freeze", fake)
+    monkeypatch.setattr(cli, "freeze_installed", fake)
 
     rc = cli.main([])
     assert rc == 0
@@ -169,7 +169,7 @@ def test_prompt_accept_default(monkeypatch, python_repo: Path):
     monkeypatch.setattr(cli, "in_virtualenv", lambda: True)
     monkeypatch.setattr(cli.sys.stdin, "isatty", lambda: True)
     monkeypatch.setattr("builtins.input", lambda _p="": "")  # bare Enter => Y
-    monkeypatch.setattr(cli, "run_pip_freeze", _fake_freeze("a==1\n"))
+    monkeypatch.setattr(cli, "freeze_installed", _fake_freeze("a==1\n"))
 
     assert cli.main([]) == 0
     assert (python_repo / "requirements.txt").exists()
