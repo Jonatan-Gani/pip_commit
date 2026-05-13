@@ -1,39 +1,104 @@
-#!/bin/sh
-echo "=== Running Global Pre-Commit Hook ==="
+#!/usr/bin/env sh
+# pip-commit: keep requirements.txt in sync with the active Python env.
+# Drop this in ~/.global-git-hooks/pre-commit (chmod +x) and point
+# `git config --global core.hooksPath` at that directory.
+#
+# Skips silently when:
+#   - not a git repo
+#   - not a Python project (no pyproject.toml/setup.py/setup.cfg/requirements*.txt and
+#     no staged .py files)
+#   - $PIP_COMMIT_SKIP is set
+#   - the active interpreter is not in a virtualenv (unless PIP_COMMIT_ALLOW_SYSTEM=1)
+#
+# Configurable via env:
+#   PIP_COMMIT_OUTPUT   path of requirements file (default: requirements.txt)
+#   PIP_COMMIT_EXCLUDE  comma-separated dist names to drop (default: empty)
+#   PIP_COMMIT_YES      if set, do not prompt
+#   PIP_COMMIT_SKIP     if set, do nothing
 
-# Get the Git repository root directory
-REPO_PATH=$(git rev-parse --show-toplevel)
-echo "Detected repository path: $REPO_PATH"
+set -eu
 
-# Navigate to the repository folder
-cd "$REPO_PATH" || exit
+[ -n "${PIP_COMMIT_SKIP:-}" ] && exit 0
 
-# Generate requirements.txt inside the repository
-pip freeze > "$REPO_PATH/requirements.txt"
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$REPO_ROOT"
 
-# Verify if the file was created
-if [ -f "$REPO_PATH/requirements.txt" ]; then
-    echo "requirements.txt was created successfully."
+# Pick a python: prefer active venv, then python3, then python.
+if [ -n "${VIRTUAL_ENV:-}" ] && [ -x "$VIRTUAL_ENV/bin/python" ]; then
+    PY="$VIRTUAL_ENV/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+    PY=python3
+elif command -v python >/dev/null 2>&1; then
+    PY=python
 else
-    echo "ERROR: requirements.txt was NOT created!"
+    # No python on PATH -> not a Python dev machine for this commit; bail quietly.
+    exit 0
+fi
+
+# Is this a Python project?
+is_python_project() {
+    [ -f pyproject.toml ] || [ -f setup.py ] || [ -f setup.cfg ] && return 0
+    # any requirements*.txt
+    for f in requirements*.txt; do
+        [ -f "$f" ] && return 0
+    done
+    # any staged .py file
+    git diff --cached --name-only | grep -qE '\.py$' && return 0
+    return 1
+}
+
+is_python_project || exit 0
+
+# Refuse to freeze the system interpreter (would capture system-wide packages).
+if [ -z "${PIP_COMMIT_ALLOW_SYSTEM:-}" ]; then
+    in_venv=$("$PY" -c 'import os,sys; print(1 if os.environ.get("VIRTUAL_ENV") or os.environ.get("CONDA_PREFIX") or sys.prefix != getattr(sys,"base_prefix",sys.prefix) else 0)') || in_venv=0
+    if [ "$in_venv" != "1" ]; then
+        echo "pip-commit: not in a virtualenv; skipping freeze. Set PIP_COMMIT_ALLOW_SYSTEM=1 to override." >&2
+        exit 0
+    fi
+fi
+
+# Prompt unless --yes / non-tty.
+if [ -z "${PIP_COMMIT_YES:-}" ] && [ -t 0 ]; then
+    printf "pip-commit: regenerate %s? [Y/n] " "${PIP_COMMIT_OUTPUT:-requirements.txt}" >&2
+    read -r answer || answer=""
+    case "$answer" in
+        ""|y|Y|yes|YES) ;;
+        *) echo "pip-commit: skipped by user." >&2; exit 0 ;;
+    esac
+fi
+
+OUT=${PIP_COMMIT_OUTPUT:-requirements.txt}
+TMP=$(mktemp "${TMPDIR:-/tmp}/pip-commit.XXXXXX")
+trap 'rm -f "$TMP"' EXIT INT TERM
+
+if ! "$PY" -m pip freeze --exclude-editable >"$TMP" 2>/dev/null; then
+    echo "pip-commit: pip freeze failed; leaving $OUT untouched." >&2
     exit 1
 fi
 
-# Optionally remove lines containing specific dependencies (customize as needed)
-REMOVE_DEP="ibapi"
-if [ -n "$REMOVE_DEP" ]; then
-    grep -iv "$REMOVE_DEP" "$REPO_PATH/requirements.txt" > "$REPO_PATH/temp.txt" && mv "$REPO_PATH/temp.txt" "$REPO_PATH/requirements.txt"
+# Apply exclusions.
+if [ -n "${PIP_COMMIT_EXCLUDE:-}" ]; then
+    # Build a case-insensitive ERE alternation: ^(pkga|pkgb)([<>=! ]|$)
+    pattern=$(printf '%s' "$PIP_COMMIT_EXCLUDE" | awk -v RS=',' '{gsub(/^ +| +$/, ""); if (length($0)) printf (NR>1?"|":"") $0}')
+    if [ -n "$pattern" ]; then
+        grep -Eiv "^($pattern)([[:space:]]|[<>=!@]|$)" "$TMP" >"$TMP.f" || true
+        mv "$TMP.f" "$TMP"
+    fi
 fi
 
-# Ensure the file is staged for commit
-git add "$REPO_PATH/requirements.txt" || echo "WARNING: Failed to stage requirements.txt"
-
-# Check if the file is staged
-if git diff --cached --name-only | grep -q "requirements.txt"; then
-    echo "requirements.txt is staged successfully."
-else
-    echo "WARNING: requirements.txt is still untracked."
+# Only write if content actually differs (avoids touch-only mtime changes).
+if [ -f "$OUT" ] && cmp -s "$TMP" "$OUT"; then
+    exit 0
 fi
 
-echo "=== Pre-Commit Hook Completed Successfully ==="
+mv "$TMP" "$OUT"
+trap - EXIT
+
+git add -- "$OUT" || {
+    echo "pip-commit: failed to stage $OUT" >&2
+    exit 1
+}
+
+echo "pip-commit: updated and staged $OUT."
 exit 0

@@ -1,0 +1,11 @@
+- id: pip-commit
+  name: pip-commit (sync requirements.txt)
+  description: Refresh requirements.txt from the active environment before committing.
+  entry: pip-commit
+  language: python
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit]
+  # Default to non-interactive so it works in IDE / GUI clients.
+  # Drop --yes if you want to be prompted.
+  args: ["--yes"]
